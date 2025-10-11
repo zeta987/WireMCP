@@ -27,7 +27,7 @@ async function findTshark() {
     
     for (const path of fallbacks) {
       try {
-        await execAsync(`${path} -v`);
+        await execAsync(`"${path}" -v`);
         console.error(`Found tshark at fallback: ${path}`);
         return path;
       } catch (e) {
@@ -36,6 +36,10 @@ async function findTshark() {
     }
     throw new Error('tshark not found. Please install Wireshark (https://www.wireshark.org/download.html) and ensure tshark is in your PATH.');
   }
+}
+
+function buildTsharkCommand(tsharkPath, args) {
+  return `"${tsharkPath}" ${args}`;
 }
 
 // Initialize MCP server
@@ -60,12 +64,12 @@ server.tool(
       console.error(`Capturing packets on ${interface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        buildTsharkCommand(tsharkPath, `-i ${interface} -w "${tempPcap}" -a duration:${duration}`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
       const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e tcp.flags -e frame.time -e http.request.method -e http.response.code`,
+        buildTsharkCommand(tsharkPath, `-r "${tempPcap}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e tcp.flags -e frame.time -e http.request.method -e http.response.code`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
@@ -112,12 +116,12 @@ server.tool(
       console.error(`Capturing summary stats on ${interface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        buildTsharkCommand(tsharkPath, `-i ${interface} -w "${tempPcap}" -a duration:${duration}`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
       const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -qz io,phs`,
+        buildTsharkCommand(tsharkPath, `-r "${tempPcap}" -qz io,phs`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
@@ -153,12 +157,12 @@ server.tool(
       console.error(`Capturing conversations on ${interface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        buildTsharkCommand(tsharkPath, `-i ${interface} -w "${tempPcap}" -a duration:${duration}`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
       const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -qz conv,tcp`,
+        buildTsharkCommand(tsharkPath, `-r "${tempPcap}" -qz conv,tcp`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
@@ -194,12 +198,12 @@ server.tool(
       console.error(`Capturing traffic on ${interface} for ${duration}s to check threats`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        buildTsharkCommand(tsharkPath, `-i ${interface} -w "${tempPcap}" -a duration:${duration}`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
       const { stdout } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -T fields -e ip.src -e ip.dst`,
+        buildTsharkCommand(tsharkPath, `-r "${tempPcap}" -T fields -e ip.src -e ip.dst`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
       const ips = [...new Set(stdout.split('\n').flatMap(line => line.split('\t')).filter(ip => ip && ip !== 'unknown'))];
@@ -315,7 +319,7 @@ server.tool(
 
       // Extract broad packet data
       const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${pcapPath}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e http.host -e http.request.uri -e frame.protocols`,
+        buildTsharkCommand(tsharkPath, `-r "${pcapPath}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e http.host -e http.request.uri -e frame.protocols`),
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
@@ -378,13 +382,13 @@ server.tool(
   
         // Extract plaintext credentials
         const { stdout: plaintextOut } = await execAsync(
-          `${tsharkPath} -r "${pcapPath}" -T fields -e http.authbasic -e ftp.request.command -e ftp.request.arg -e telnet.data -e frame.number`,
+          buildTsharkCommand(tsharkPath, `-r "${pcapPath}" -T fields -e http.authbasic -e ftp.request.command -e ftp.request.arg -e telnet.data -e frame.number`),
           { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
         );
 
         // Extract Kerberos credentials
         const { stdout: kerberosOut } = await execAsync(
-          `${tsharkPath} -r "${pcapPath}" -T fields -e kerberos.CNameString -e kerberos.realm -e kerberos.cipher -e kerberos.type -e kerberos.msg_type -e frame.number`,
+          buildTsharkCommand(tsharkPath, `-r "${pcapPath}" -T fields -e kerberos.CNameString -e kerberos.realm -e kerberos.cipher -e kerberos.type -e kerberos.msg_type -e frame.number`),
           { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
         );
 
